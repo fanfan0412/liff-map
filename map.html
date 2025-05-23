@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>地圖位置選擇器</title>
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #search-box {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 10px;
+      z-index: 5;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    #submit-btn {
+      margin-top: 10px;
+      width: 100%;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="search-box">
+    <input id="address" type="text" placeholder="輸入地址" size="40" />
+    <button onclick="geocodeAddress()">定位</button>
+    <div><button id="submit-btn" onclick="sendLocation()">送出位置</button></div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    const liffId = "2007468622-N97n1j1Y"; // 你的 LIFF ID
+    let map, marker, geocoder;
+
+    async function initApp() {
+      await liff.init({ liffId });
+      if (!liff.isInClient()) alert("請透過 LINE 開啟此頁面");
+
+      geocoder = new google.maps.Geocoder();
+      const defaultPosition = { lat: 25.0330, lng: 121.5654 }; // 台北
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: defaultPosition,
+        zoom: 15,
+      });
+
+      marker = new google.maps.Marker({
+        map: map,
+        position: defaultPosition,
+        draggable: true,
+      });
+    }
+
+    function geocodeAddress() {
+      const address = document.getElementById("address").value;
+      geocoder.geocode({ address: address }, (results, status) => {
+        if (status === "OK") {
+          map.setCenter(results[0].geometry.location);
+          marker.setPosition(results[0].geometry.location);
+        } else {
+          alert("無法找到該地址：" + status);
+        }
+      });
+    }
+
+    function sendLocation() {
+      const pos = marker.getPosition();
+      geocoder.geocode({ location: pos }, (results, status) => {
+        let address = "";
+        if (status === "OK" && results[0]) {
+          address = results[0].formatted_address;
+        }
+        const msg = `位置：${pos.lat().toFixed(6)}, ${pos.lng().toFixed(6)}\n地址：${address}`;
+
+        if (liff.isInClient()) {
+          liff.sendMessages([{ type: 'text', text: msg }])
+            .then(() => liff.closeWindow())
+            .catch(err => alert("訊息傳送失敗：" + err));
+        } else {
+          alert("不在 LINE 內部，無法傳送訊息\n\n" + msg);
+        }
+      });
+    }
+
+    window.onload = initApp;
+  </script>
+</body>
+</html>
