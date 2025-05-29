@@ -1,97 +1,251 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>地圖位置選擇器</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>車程發起表單</title>
   <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
-    #search-box {
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    #form-container { padding: 16px; background: #f9f9f9; }
+    label { display: block; margin: 8px 0 4px; }
+    input, select { width: 100%; padding: 8px; margin-bottom: 12px; }
+    .map-section { position: relative; margin: 12px 0; }
+    .map { width: 100%; height: 300px; }
+    .pin {
       position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: white;
-      padding: 10px;
-      z-index: 5;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -100%);
+      z-index: 10;
+      pointer-events: none;
     }
-    #submit-btn {
-      margin-top: 10px;
-      width: 100%;
+    button { padding: 10px; width: 100%; background: #28a745; color: white; border: none; border-radius: 4px; }
+    .autocomplete-suggestions {
+      border: 1px solid #ccc;
+      max-height: 150px;
+      overflow-y: auto;
+      position: absolute;
+      background: white;
+      z-index: 99;
+    }
+    .autocomplete-suggestion {
       padding: 8px;
+      cursor: pointer;
+    }
+    .autocomplete-suggestion:hover {
+      background-color: #f0f0f0;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    #confirmationBox {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 16px;
+      margin: 16px;
+      border-radius: 8px;
+      display: none;
+    }
+    #confirmationBox img {
+      width: 100%; margin-top: 12px;
     }
   </style>
 </head>
 <body>
-  <div id="search-box">
-    <input id="address" type="text" placeholder="輸入地址" size="40" />
-    <button onclick="geocodeAddress()">定位</button>
-    <div><button id="submit-btn" onclick="sendLocation()">送出位置</button></div>
+  <div id="form-container">
+    <label id="timeLabel">預計出發時間</label>
+    <input type="datetime-local" id="startTime">
+
+    <label id="passengerLabel">預計乘客數</label>
+    <select id="passengerCount">
+      <option value="">請選擇</option>
+      <option value="1">1人</option>
+      <option value="2">2人</option>
+      <option value="3">3人</option>
+    </select>
+
+    <label>起點</label>
+    <input id="originInput" placeholder="輸入起點地址" onfocus="activeField='origin'">
+    <div id="originSuggestions" class="autocomplete-suggestions"></div>
+
+    <label>終點</label>
+    <input id="destinationInput" placeholder="輸入終點地址" onfocus="activeField='destination'">
+    <div id="destinationSuggestions" class="autocomplete-suggestions"></div>
   </div>
-  <div id="map"></div>
+
+  <div class="map-section" id="mapContainer">
+    <div id="map" class="map"></div>
+    <img src="https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2.png" class="pin">
+  </div>
+
+  <div style="padding: 16px;">
+    <button id="submitBtn" onclick="submitForm()" disabled>送出</button>
+  </div>
+
+  <div id="confirmationBox"></div>
 
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBHz0Ik6s9mObEHKLJYQ4WnoWka4OxGczY&libraries=places"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-    const liffId = "2007468622-N97n1j1Y"; // 你的 LIFF ID
-    let map, marker, geocoder;
+    const liffId = "2007468622-N97n1j1Y";
+    let map, geocoder, activeField, autocompleteService;
 
     async function initApp() {
       await liff.init({ liffId });
-      if (!liff.isInClient()) alert("請透過 LINE 開啟此頁面");
-
       geocoder = new google.maps.Geocoder();
-      const defaultPosition = { lat: 25.0330, lng: 121.5654 }; // 台北
+      autocompleteService = new google.maps.places.AutocompleteService();
+
       map = new google.maps.Map(document.getElementById("map"), {
-        center: defaultPosition,
+        center: { lat: 25.0330, lng: 121.5654 },
         zoom: 15,
       });
 
-      marker = new google.maps.Marker({
-        map: map,
-        position: defaultPosition,
-        draggable: true,
+      map.addListener('dragend', () => {
+        const center = map.getCenter();
+        geocoder.geocode({ location: center }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+            document.getElementById(activeField + 'Input').value = results[0].formatted_address;
+          }
+        });
+      });
+
+      setupAutocomplete('origin');
+      setupAutocomplete('destination');
+    }
+
+    function setupAutocomplete(field) {
+      const input = document.getElementById(field + 'Input');
+      const suggestionBox = document.getElementById(field + 'Suggestions');
+
+      input.addEventListener('input', () => {
+        const query = input.value;
+        if (!query) {
+          suggestionBox.innerHTML = '';
+          return;
+        }
+        autocompleteService.getPlacePredictions({ input: query }, (predictions, status) => {
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) return;
+          suggestionBox.innerHTML = '';
+          predictions.forEach(prediction => {
+            const div = document.createElement('div');
+            div.className = 'autocomplete-suggestion';
+            div.textContent = prediction.description;
+            div.onclick = () => {
+              input.value = prediction.description;
+              suggestionBox.innerHTML = '';
+              geocoder.geocode({ address: prediction.description }, (results, status) => {
+                if (status === 'OK') {
+                  map.setCenter(results[0].geometry.location);
+                }
+              });
+            };
+            suggestionBox.appendChild(div);
+          });
+        });
       });
     }
 
-    function geocodeAddress() {
-      const address = document.getElementById("address").value;
-      geocoder.geocode({ address: address }, (results, status) => {
-        if (status === "OK") {
-          map.setCenter(results[0].geometry.location);
-          marker.setPosition(results[0].geometry.location);
-        } else {
-          alert("無法找到該地址：" + status);
+    async function submitForm() {
+      const startTime = document.getElementById("startTime").value;
+      const passengerCount = document.getElementById("passengerCount").value;
+      const origin = document.getElementById("originInput").value;
+      const destination = document.getElementById("destinationInput").value;
+      const confirmationBox = document.getElementById("confirmationBox");
+
+      const service = new google.maps.DirectionsService();
+      service.route({
+        origin,
+        destination,
+        travelMode: 'DRIVING'
+      }, (result, status) => {
+        if (status !== 'OK') {
+          confirmationBox.innerHTML = `<div style='color:red;'>輸入的地點無法開車抵達，請重新選擇。</div>`;
+          confirmationBox.style.display = 'block';
+          return;
         }
+
+        const bounds = result.routes[0].bounds;
+const center = bounds.getCenter();
+const snapshot = `https://maps.googleapis.com/maps/api/staticmap?size=400x200&path=enc:${result.routes[0].overview_polyline.points}&markers=color:green|label:S|${origin}&markers=color:red|label:E|${destination}&key=AIzaSyBHz0Ik6s9mObEHKLJYQ4WnoWka4OxGczY`;
+        const duration = result.routes[0].legs[0].duration.text;
+
+        confirmationBox.innerHTML = `
+          <strong>請確認以下資訊：</strong><br>
+          出發時間：${startTime}<br>
+          乘客數：${passengerCount}<br>
+          起點：${origin}<br>
+          終點：${destination}<br>
+          預計車程時間：${duration}<br>
+          <img src="${snapshot}" alt="路線圖"><br><br>
+          <button onclick="confirmSend('${startTime}','${passengerCount}','${origin}','${destination}','${snapshot}')">確認送出</button>
+        `;
+        confirmationBox.style.display = 'block';
       });
     }
 
-    function sendLocation() {
-      const pos = marker.getPosition();
-      geocoder.geocode({ location: pos }, (results, status) => {
-        let address = "";
-        if (status === "OK" && results[0]) {
-          address = results[0].formatted_address;
-        }
-        const msg = `位置：${pos.lat().toFixed(6)}, ${pos.lng().toFixed(6)}\n地址：${address}`;
-
-        if (liff.isInClient()) {
-          liff.sendMessages([{ type: 'text', text: msg }])
-            .then(() => liff.closeWindow())
-            .catch(err => alert("訊息傳送失敗：" + err));
-        } else {
-          alert("不在 LINE 內部，無法傳送訊息\n\n" + msg);
-        }
-      });
+    function confirmSend(startTime, passengerCount, origin, destination, snapshot) {
+      const msg = `🚗 車程發起資訊：\n出發時間：${startTime}\n乘客數：${passengerCount}\n起點：${origin}\n終點：${destination}`;
+      if (liff.isInClient()) {
+        liff.sendMessages([
+          { type: 'text', text: msg },
+          { type: 'image', originalContentUrl: snapshot, previewImageUrl: snapshot }
+        ])
+        .then(() => liff.closeWindow())
+        .catch(err => alert("訊息傳送失敗：" + err));
+      } else {
+        alert("非在 LINE App 中，無法傳送訊息\n\n" + msg);
+      }
     }
 
-    window.onload = initApp;
+    window.onload = () => {
+      initApp();
+      const startTimeInput = document.getElementById("startTime");
+      const passengerCountInput = document.getElementById("passengerCount");
+      const originInput = document.getElementById("originInput");
+      const destinationInput = document.getElementById("destinationInput");
+
+      startTimeInput.addEventListener('input', validateForm);
+      passengerCountInput.addEventListener('change', validateForm);
+      originInput.addEventListener('input', validateForm);
+      destinationInput.addEventListener('input', validateForm);
+    };
+
+    function validateForm() {
+      const startTimeInput = document.getElementById("startTime");
+      const passengerCountInput = document.getElementById("passengerCount");
+      const originInput = document.getElementById("originInput");
+      const destinationInput = document.getElementById("destinationInput");
+      const submitBtn = document.getElementById("submitBtn");
+      const passengerLabel = document.getElementById("passengerLabel");
+      const timeLabel = document.getElementById("timeLabel");
+
+      let isValid = true;
+      passengerLabel.style.color = "black";
+      passengerLabel.textContent = "預計乘客數";
+      timeLabel.style.color = "black";
+      timeLabel.textContent = "預計出發時間";
+
+      const now = new Date();
+      const selectedTime = new Date(startTimeInput.value);
+      if (!startTimeInput.value || isNaN(selectedTime.getTime()) || selectedTime <= now) {
+        timeLabel.style.color = "red";
+        timeLabel.textContent = "預計出發時間（僅能選擇未來的時間）";
+        isValid = false;
+      }
+
+      const passengerCount = parseInt(passengerCountInput.value);
+      if (isNaN(passengerCount) || passengerCount < 1 || passengerCount > 3) {
+        passengerLabel.style.color = "red";
+        passengerLabel.textContent = "預計乘客數（請選擇 1 至 3 人）";
+        isValid = false;
+      }
+
+      if (!originInput.value || !destinationInput.value) {
+        isValid = false;
+      }
+
+      submitBtn.disabled = !isValid;
+    }
   </script>
 </body>
 </html>
