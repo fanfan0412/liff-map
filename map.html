@@ -257,8 +257,7 @@
 
   if (liff.isInClient()) {
     liff.sendMessages([
-      { type: 'text', text: msg },
-      { type: 'image', originalContentUrl: data.snapshot, previewImageUrl: data.snapshot }
+      { type: 'text', text: msg }
     ])
     .then(() => liff.closeWindow())
     .catch(err => alert("訊息傳送失敗：" + err));
