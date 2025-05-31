@@ -143,8 +143,23 @@
               input.value = prediction.description;
               suggestionBox.innerHTML = '';
               geocoder.geocode({ address: prediction.description }, (results, status) => {
-                if (status === 'OK') {
-                  map.setCenter(results[0].geometry.location);
+                if (status === 'OK' && results[0]) {
+                  const location = results[0].geometry.location;
+                  map.setCenter(location);
+
+                  // 加上這段：解析地點、存入 window.originInfo 或 window.destinationInfo
+                  const components = results[0].address_components;
+                  const city = components.find(c => c.types.includes('administrative_area_level_1'))?.long_name || '';
+                  const district = components.find(c => c.types.includes('administrative_area_level_2'))?.long_name || '';
+                  const route = components.find(c => c.types.includes('route'))?.long_name || '';
+                  let number = components.find(c => c.types.includes('street_number'))?.long_name || '';
+                  if (number && !number.endsWith('號')) number += '號';
+                  const formatted = `${city}${district}${route}${number}`;
+
+                  input.value = formatted;
+                  window[field + 'Info'] = { city, district, route, number };
+
+                  validateForm(); // ⚠️ 有變動就觸發按鈕檢查
                 }
               });
             };
