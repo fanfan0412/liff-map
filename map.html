@@ -161,29 +161,31 @@
   const destination = document.getElementById("destinationInput").value;
   const confirmationBox = document.getElementById("confirmationBox");
 
-  // 將當前輸入框 disabled
   document.getElementById("startTime").disabled = true;
   document.getElementById("passengerCount").disabled = true;
   document.getElementById("originInput").disabled = true;
   document.getElementById("destinationInput").disabled = true;
 
+  // ✅ 改成 await 等待 directions result
   const service = new google.maps.DirectionsService();
-  service.route({ origin, destination, travelMode: 'DRIVING' }, (result, status) => {
-    if (status !== 'OK') {
-      confirmationBox.innerHTML = `<div style='color:red;'>輸入的地點無法開車抵達，請重新選擇。</div>`;
-      confirmationBox.style.display = 'block';
-      return;
-    }
+  const result = await new Promise((resolve, reject) => {
+    service.route({ origin, destination, travelMode: 'DRIVING' }, (res, status) => {
+      if (status === 'OK') resolve(res);
+      else reject(new Error("無法取得路線"));
+    });
+  });
 
-    const duration = result.routes[0].legs[0].duration.text;
-    const bounds = result.routes[0].bounds;
-    const polyline = result.routes[0].overview_polyline.points;
-    const rawMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=400x200&path=enc:${polyline}&markers=color:green|label:S|${origin}&markers=color:red|label:E|${destination}&key=AIzaSyBHz0Ik6s9mObEHKLJYQ4WnoWka4OxGczY`;
-    const snapshot = `https://liff-map-api.vercel.app/api/staticmap?snapshotUrl=${encodeURIComponent(rawMapUrl)}`;
+  const duration = result.routes[0].legs[0].duration.text;
+  const polyline = result.routes[0].overview_polyline.points;
+  const rawMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=400x200&path=enc:${polyline}&markers=color:green|label:S|${origin}&markers=color:red|label:E|${destination}&key=AIzaSyBHz0Ik6s9mObEHKLJYQ4WnoWka4OxGczY`;
 
-    // 保存當前資訊
+  try {
+    const resp = await fetch(`https://liff-map-api.vercel.app/api/staticmap?snapshotUrl=${encodeURIComponent(rawMapUrl)}`);
+    const data = await resp.json();
+    const snapshotBase64 = data.base64;
+
     window._submitData = {
-      startTime, passengerCount, origin, destination, snapshot,
+      startTime, passengerCount, origin, destination, snapshot: snapshotBase64,
       originCity: window.originInfo?.city || '',
       destinationCity: window.destinationInfo?.city || '',
       duration
@@ -196,14 +198,18 @@
       起點：${origin}<br>
       終點：${destination}<br>
       預計車程時間：${duration}<br>
-      <img src="${snapshot}" alt="路線圖"><br><br>
+      <img src="${snapshotBase64}" alt="路線圖"><br><br>
       <button onclick="goBack()">回上一頁</button><br><br>
       <button onclick="confirmSend()">確認送出</button>
     `;
     confirmationBox.style.display = 'block';
-  });
+  } catch (err) {
+    confirmationBox.innerHTML = `<div style='color:red;'>無法取得路線圖，請稍後再試。</div>`;
+    confirmationBox.style.display = 'block';
+    console.error("取得縮圖失敗", err);
+  }
 }
-      
+
 
     function confirmSend() {
   const data = window._submitData;
