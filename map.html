@@ -177,7 +177,9 @@
 
     const duration = result.routes[0].legs[0].duration.text;
     const bounds = result.routes[0].bounds;
-    const snapshot = `https://maps.googleapis.com/maps/api/staticmap?size=400x200&path=enc:${result.routes[0].overview_polyline.points}&markers=color:green|label:S|${origin}&markers=color:red|label:E|${destination}&key=AIzaSyBHz0Ik6s9mObEHKLJYQ4WnoWka4OxGczY`;
+    const polyline = result.routes[0].overview_polyline.points;
+    const rawMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=400x200&path=enc:${polyline}&markers=color:green|label:S|${origin}&markers=color:red|label:E|${destination}&key=AIzaSyBHz0Ik6s9mObEHKLJYQ4WnoWka4OxGczY`;
+    const snapshot = `https://liff-map-api.vercel.app/api/staticmap?snapshotUrl=${encodeURIComponent(rawMapUrl)}`;
 
     // 保存當前資訊
     window._submitData = {
