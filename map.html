@@ -257,10 +257,19 @@ function confirmSend() {
       liff.closeWindow();
     }
   })
-  .catch(err => {
-    console.error("儲存錯誤：", err);
+  .catch(async err => {
+  const message = err?.message || JSON.stringify(err);
+  console.error("❌ 儲存錯誤：", message);
+
+  try {
+    const body = await err.response?.text?.();
+    console.error("❗ 後端回應：", body);
+    alert(`❌ 上傳失敗：${body || message}`);
+  } catch {
     alert("❌ 上傳失敗，請稍後再試");
-  });
+  }
+});
+
 }
 
 
